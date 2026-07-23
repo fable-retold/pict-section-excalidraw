@@ -134,11 +134,17 @@ async function main()
 	// can omit this file entirely — the wrapper just looks for the globals
 	// on window.
 	// ------------------------------------------------------------------
+	// react-dom/client carries createRoot/hydrateRoot; the main react-dom entry carries createPortal,
+	// flushSync, and the legacy APIs. The wrapper reads ALL of these off window.ReactDOM (Excalidraw
+	// mounts every dialog/modal with createPortal), so window.ReactDOM must be the union of both entries —
+	// react-dom/client alone omits createPortal, which surfaces as "createPortal is not a function" the
+	// first time any dialog opens, tearing the editor down. Merge them (client wins for createRoot).
 	let tmpReactEntrySource =
 		`import * as React from 'react';\n` +
+		`import * as ReactDOM from 'react-dom';\n` +
 		`import * as ReactDOMClient from 'react-dom/client';\n` +
 		`const _React    = React.default    || React;\n` +
-		`const _ReactDOM = ReactDOMClient.default || ReactDOMClient;\n` +
+		`const _ReactDOM = Object.assign({}, ReactDOM.default || ReactDOM, ReactDOMClient.default || ReactDOMClient);\n` +
 		`if (typeof window !== 'undefined') {\n` +
 		`\twindow.React    = window.React    || _React;\n` +
 		`\twindow.ReactDOM = window.ReactDOM || _ReactDOM;\n` +
