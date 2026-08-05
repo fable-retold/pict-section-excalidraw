@@ -14,6 +14,8 @@
 		"start": "node source/Pict-Section-Excalidraw.js",
 		"build": "npx quack build",
 		"build:vendor": "node scripts/Build-Vendor-Bundles.js",
+		"prepublishOnly": "node scripts/Prepare-Publish.js",
+		"verify:publish": "node scripts/Prepare-Publish.js",
 		"test": "mocha -u tdd -R spec",
 		"tests": "mocha -u tdd -R spec -g",
 		"test:e2e": "node test/puppeteer/Notebook-Generator-E2E.js",

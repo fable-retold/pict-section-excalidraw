@@ -117,7 +117,42 @@ In `iframe` mode, theme tokens are piped through `postMessage` and re-applied as
 <!-- bespoke diagram: edit diagrams/vendor-mirror.mmd or .hints.json, then: npx pict-renderer-graph build modules/pict/pict-section-excalidraw -->
 ![Vendor mirror](diagrams/vendor-mirror.svg)
 
-Run `npm run build:vendor` to rebuild from `vendor/excalidraw/`.
+Run `npm run build:vendor` to rebuild from `vendor/excalidraw/`. That is the
+heavy, occasional step (only needed on an Excalidraw upstream bump) and it
+requires the yarn toolchain inside `vendor/excalidraw/`:
+
+```bash
+corepack enable
+( cd vendor/excalidraw && yarn install && yarn build:packages )
+npm run build:vendor
+```
+
+## Publishing
+
+The runtime does not load the iframe host from `source/iframe-host/`. It loads
+the copies the vendor build drops into `vendor/excalidraw-built/` (consuming
+apps deploy that whole directory). So editing `source/iframe-host/*` without
+re-mirroring it leaves the shipped copy stale.
+
+`npm publish` runs the `prepublishOnly` gate (`scripts/Prepare-Publish.js`)
+automatically. It:
+
+1. Re-copies `source/iframe-host/*` into `vendor/excalidraw-built/` so the
+   shipped iframe host can never lag the source (it warns if it had to).
+2. Verifies the heavy committed bundles (`excalidraw-wrapper.min.js`,
+   `react-vendor.min.js`, the CSS, the fonts/locales asset trees) are present
+   and non-trivial, and hard-fails the publish if any are missing.
+
+Run `npm run verify:publish` any time to dry-check the tree without publishing.
+
+To cut a new release:
+
+```bash
+npm run verify:publish          # sync + verify (also run automatically on publish)
+git add -A && git commit -m "..." # commit any refreshed vendor/excalidraw-built/ files
+npm version patch               # bump (npm will not republish an existing version)
+npm publish                     # prepublishOnly gate runs here too
+```
 
 ## Demos
 

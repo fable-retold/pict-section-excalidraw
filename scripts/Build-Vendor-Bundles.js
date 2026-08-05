@@ -35,13 +35,15 @@
 const libFs   = require('fs');
 const libPath = require('path');
 const libEsbuild = require('esbuild');
+// Reuse the publish gate's iframe-host sync so "which iframe host files ship,
+// and where they land" is defined in exactly one place (Prepare-Publish.js).
+const { syncIframeHost } = require('./Prepare-Publish.js');
 
 const REPO_ROOT       = libPath.resolve(__dirname, '..');
 const VENDOR_SRC      = libPath.join(REPO_ROOT, 'vendor', 'excalidraw');
 const PROD_DIST       = libPath.join(VENDOR_SRC, 'packages', 'excalidraw', 'dist', 'prod');
 const NODE_MODULES    = libPath.join(VENDOR_SRC, 'node_modules');
 const VENDOR_BUILT    = libPath.join(REPO_ROOT, 'vendor', 'excalidraw-built');
-const IFRAME_HOST_SRC = libPath.join(REPO_ROOT, 'source', 'iframe-host');
 
 function logStep(pMessage)
 {
@@ -361,10 +363,7 @@ async function main()
 		libPath.join(VENDOR_BUILT, 'excalidraw-wrapper.css'));
 
 	logStep('copying iframe host page + script');
-	copyFile(libPath.join(IFRAME_HOST_SRC, 'excalidraw-iframe-host.html'),
-		libPath.join(VENDOR_BUILT, 'excalidraw-iframe-host.html'));
-	copyFile(libPath.join(IFRAME_HOST_SRC, 'excalidraw-iframe-host.js'),
-		libPath.join(VENDOR_BUILT, 'excalidraw-iframe-host.js'));
+	syncIframeHost(logStep);
 
 	logStep('copying fonts + locales (EXCALIDRAW_ASSET_PATH)');
 	let tmpAssetSubdirs = [ 'fonts', 'locales' ];
