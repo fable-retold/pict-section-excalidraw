@@ -62,6 +62,40 @@
 	};
 	var changeThrottleHandle = null;
 	var lastChangeSnapshot   = null;
+	var formFactorMode       = 'auto';
+
+	// Mirror of source/utils/Excalidraw-Form-Factor.js.  It is duplicated rather than required because
+	// this file runs inside the iframe with no module loader, and because the parent can only
+	// postMessage the MODE STRING (a function is not structured-cloneable).  Keep the two in step.
+	//
+	// Excalidraw sizes its UI from the CONTAINER's box, so a short embedded canvas reads as a phone and
+	// buries the shape properties in a popover.  Returning undefined defers to Excalidraw's own answer.
+	function resolveFormFactor()
+	{
+		var tmpMode = (typeof formFactorMode === 'string') ? formFactorMode.toLowerCase() : 'auto';
+		if (tmpMode === 'pointer')
+		{
+			var tmpCoarse = false;
+			try { tmpCoarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); }
+			catch (pErr) { tmpCoarse = false; }
+			return tmpCoarse ? undefined : 'desktop';
+		}
+		if (tmpMode === 'desktop' || tmpMode === 'tablet' || tmpMode === 'phone')
+		{
+			return tmpMode;
+		}
+		return undefined;
+	}
+
+	function buildUIOptions()
+	{
+		var tmpUIOptions = Object.assign({}, currentProps.UIOptions || {});
+		if (!tmpUIOptions.getFormFactor && (formFactorMode !== 'auto'))
+		{
+			tmpUIOptions.getFormFactor = resolveFormFactor;
+		}
+		return tmpUIOptions;
+	}
 
 	function applyThemeTokens(pTokens)
 	{
@@ -78,6 +112,8 @@
 	{
 		var tmpProps = Object.assign({}, currentProps,
 		{
+			// Rebuilt per render — the resolver has to be re-attached after any props merge.
+			UIOptions: buildUIOptions(),
 			// Public prop is onExcalidrawAPI, not excalidrawAPI (the latter
 			// is just the mountPayload shape inside Excalidraw's own code).
 			onExcalidrawAPI: function (pApi) { excalidrawAPI = pApi; },
@@ -126,16 +162,39 @@
 		};
 	}
 
+	// Excalidraw's exportToSvg/exportToBlob read the export flags (exportEmbedScene, exportBackground,
+	// exportWithDarkMode, exportScale) off `appState`, NOT off the top level of the options object.
+	// Spreading the caller's options over the scene snapshot therefore dropped those flags silently — most
+	// importantly `exportEmbedScene`, without which the exported SVG carries no embedded scene and cannot
+	// be re-imported. Re-home the appState-level flags into appState; everything else still passes through.
+	var APP_STATE_EXPORT_FLAGS = [ 'exportEmbedScene', 'exportBackground', 'exportWithDarkMode', 'exportScale' ];
+
+	function buildExportOptions(pScene, pOpts)
+	{
+		var tmpOpts     = Object.assign({}, pOpts || {});
+		// Caller-supplied appState wins over the live snapshot, field by field.
+		var tmpAppState = Object.assign({}, pScene.appState, tmpOpts.appState || {});
+		for (var i = 0; i < APP_STATE_EXPORT_FLAGS.length; i++)
+		{
+			var tmpFlag = APP_STATE_EXPORT_FLAGS[i];
+			if (Object.prototype.hasOwnProperty.call(tmpOpts, tmpFlag))
+			{
+				tmpAppState[tmpFlag] = tmpOpts[tmpFlag];
+				delete tmpOpts[tmpFlag];
+			}
+		}
+		return Object.assign({
+			elements: pScene.elements,
+			files:    pScene.files
+		}, tmpOpts, { appState: tmpAppState });
+	}
+
 	function exportSvgScene(pOpts)
 	{
 		if (!vendor.exportToSvg) return Promise.reject(new Error('exportToSvg unavailable'));
 		var tmpScene = getSceneSnapshot();
 		if (!tmpScene) return Promise.reject(new Error('Excalidraw not mounted'));
-		return vendor.exportToSvg(Object.assign({
-			elements: tmpScene.elements,
-			appState: tmpScene.appState,
-			files:    tmpScene.files
-		}, pOpts || {})).then(function (pSvgEl)
+		return vendor.exportToSvg(buildExportOptions(tmpScene, pOpts)).then(function (pSvgEl)
 		{
 			// Serialize to a string for postMessage (SVG element is not
 			// structured-cloneable).
@@ -148,12 +207,59 @@
 		if (!vendor.exportToBlob) return Promise.reject(new Error('exportToBlob unavailable'));
 		var tmpScene = getSceneSnapshot();
 		if (!tmpScene) return Promise.reject(new Error('Excalidraw not mounted'));
-		return vendor.exportToBlob(Object.assign({
-			elements: tmpScene.elements,
-			appState: tmpScene.appState,
-			files:    tmpScene.files,
-			mimeType: 'image/png'
-		}, pOpts || {}));
+		// mimeType stays a DEFAULT the caller can still override.
+		return vendor.exportToBlob(Object.assign(
+			{ mimeType: 'image/png' }, buildExportOptions(tmpScene, pOpts)));
+	}
+
+	// Seed the mount from a stored SVG when the caller passes one. Reopening a saved diagram needs the
+	// scene parsed back out of its SVG, and only this side (inside the iframe) has the Excalidraw vendor
+	// that can do it — the embedder cannot in iframe mode. So the caller may hand the raw SVG through as
+	// `initialData.svgSource`; if it carries no elements, parse the embedded scene via loadFromBlob and
+	// replace initialData BEFORE mount, so Excalidraw boots with the real scene (no setScene race). An SVG
+	// with no embedded scene yields no elements and simply mounts blank, as before.
+	function seedInitialDataFromSvg(fDone)
+	{
+		var tmpInitial = currentProps.initialData;
+		var tmpSvg     = tmpInitial && tmpInitial.svgSource;
+		var tmpHasElements = tmpInitial && tmpInitial.elements && tmpInitial.elements.length;
+		if (!tmpSvg || tmpHasElements || !vendor.loadFromBlob || typeof Blob === 'undefined')
+		{
+			if (tmpInitial) { delete tmpInitial.svgSource; }
+			return fDone();
+		}
+		var tmpSettled = false;
+		var tmpFinish = function ()
+		{
+			if (tmpSettled) return;
+			tmpSettled = true;
+			if (currentProps.initialData) { delete currentProps.initialData.svgSource; }
+			fDone();
+		};
+		try
+		{
+			var tmpBlob = new Blob([ tmpSvg ], { type: 'image/svg+xml' });
+			Promise.resolve(vendor.loadFromBlob(tmpBlob, null, null)).then(
+				function (pScene)
+				{
+					if (pScene && pScene.elements && pScene.elements.length)
+					{
+						currentProps.initialData =
+						{
+							elements: pScene.elements,
+							appState: pScene.appState || {},
+							files:    pScene.files    || {}
+						};
+					}
+					tmpFinish();
+				},
+				function () { tmpFinish(); }
+			);
+		}
+		catch (pErr)
+		{
+			tmpFinish();
+		}
 	}
 
 	window.addEventListener('message', function (pEvent)
@@ -169,10 +275,17 @@
 					{
 						window.EXCALIDRAW_ASSET_PATH = tmpData.payload.assetBaseURL;
 					}
+					if (tmpData.payload.formFactor)
+					{
+						formFactorMode = tmpData.payload.formFactor;
+					}
 					currentProps = Object.assign(currentProps, tmpData.payload);
 				}
-				mount();
-				hideStatus();
+				seedInitialDataFromSvg(function ()
+				{
+					mount();
+					hideStatus();
+				});
 				return;
 
 			case 'pict-excalidraw:setScene':
