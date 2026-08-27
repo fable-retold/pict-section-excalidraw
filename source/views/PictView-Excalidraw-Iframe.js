@@ -195,6 +195,9 @@ class PictViewExcalidrawIframe extends libPictViewClass
 				zenModeEnabled:  !!this.options.ZenModeEnabled,
 				gridModeEnabled: !!this.options.GridModeEnabled,
 				UIOptions:       this.options.UIOptions || {},
+				// The MODE STRING, not a resolver: postMessage structured-clones its payload and a
+				// function would throw a DataCloneError.  The host rebuilds the hook inside the frame.
+				formFactor:      this.options.FormFactor || 'auto',
 				assetBaseURL:    this.options.AssetBaseURL
 			}
 		});

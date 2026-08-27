@@ -10,6 +10,8 @@
 // CSS custom properties (var(--theme-color-*, fallback)) so the control re-tints
 // automatically when the app switches themes.  Layout values are local —
 // Excalidraw's own chrome owns its internal sizing.
+/* The 320px floor is a var so a host that sizes the control itself (a form field with a resize grip,
+   say) can drop below it; without that, the floor silently wins and the control refuses to shrink. */
 const _CSS = `.pict-excalidraw-wrap
 {
 	position: relative;
@@ -17,7 +19,7 @@ const _CSS = `.pict-excalidraw-wrap
 	flex-direction: column;
 	width: 100%;
 	height: 100%;
-	min-height: 320px;
+	min-height: var(--pict-excalidraw-min-height, 320px);
 	background: var(--theme-color-background-panel, #FFFFFF);
 	border: 1px solid var(--theme-color-border-default, #D0D0D0);
 	border-radius: 4px;
@@ -56,7 +58,7 @@ const _CSS = `.pict-excalidraw-wrap
 	flex: 1 1 auto;
 	width: 100%;
 	height: 100%;
-	min-height: 320px;
+	min-height: var(--pict-excalidraw-min-height, 320px);
 	border: 0;
 	background: var(--theme-color-background-panel, #FFFFFF);
 }
@@ -67,7 +69,7 @@ const _CSS = `.pict-excalidraw-wrap
 	flex: 1 1 auto;
 	width: 100%;
 	height: 100%;
-	min-height: 320px;
+	min-height: var(--pict-excalidraw-min-height, 320px);
 	position: relative;
 }
 
@@ -125,6 +127,14 @@ module.exports = ({
 	// 'light' | 'dark' | 'auto'.  'auto' follows the pict-section-theme mode
 	// when the provider is present.
 	"Theme": "light",
+
+	// How Excalidraw should classify the editor for UI density.  Excalidraw's own answer comes from
+	// the CONTAINER's box, which misreads a small embed on a large desktop as a phone and hides the
+	// shape properties behind a popover.
+	//   'auto'    - Excalidraw decides (its stock behavior)
+	//   'pointer' - desktop chrome for a mouse; Excalidraw's own answer on a touch screen
+	//   'desktop' | 'tablet' | 'phone' - pin it
+	"FormFactor": "auto",
 
 	"ViewModeEnabled": false,
 	"ZenModeEnabled":  false,
