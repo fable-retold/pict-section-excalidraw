@@ -1,6 +1,6 @@
 {
 	"name": "pict-section-excalidraw",
-	"version": "1.0.5",
+	"version": "1.0.6",
 	"description": "Pict view wrapping Excalidraw as an embeddable, themable, save/load-overridable drawing control",
 	"main": "source/Pict-Section-Excalidraw.js",
 	"files": [
