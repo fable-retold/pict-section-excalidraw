@@ -469,5 +469,83 @@ suite
 				});
 			}
 		);
+
+		// ----------------------------------------------------------------
+		suite
+		(
+			'Form factor',
+			() =>
+			{
+				test('buildFormFactorResolver: auto opts out, explicit factors pin, pointer follows the device', () =>
+				{
+					const libFormFactor = require('../source/utils/Excalidraw-Form-Factor.js');
+
+					// 'auto' means "don't install the hook at all" so Excalidraw keeps its own answer.
+					Expect(libFormFactor.buildFormFactorResolver('auto')).to.equal(null);
+					Expect(libFormFactor.buildFormFactorResolver(undefined)).to.equal(null);
+					Expect(libFormFactor.buildFormFactorResolver('nonsense')).to.equal(null);
+
+					Expect(libFormFactor.buildFormFactorResolver('desktop')()).to.equal('desktop');
+					Expect(libFormFactor.buildFormFactorResolver('phone')()).to.equal('phone');
+					Expect(libFormFactor.buildFormFactorResolver('DESKTOP')()).to.equal('desktop');
+
+					// A fine pointer (or no matchMedia at all) gets desktop chrome...
+					let tmpOriginal = window.matchMedia;
+					window.matchMedia = () => ({ matches: false });
+					Expect(libFormFactor.buildFormFactorResolver('pointer')()).to.equal('desktop');
+					// ...and a touch screen defers to Excalidraw, which is better with a finger.
+					window.matchMedia = () => ({ matches: true });
+					Expect(libFormFactor.buildFormFactorResolver('pointer')()).to.equal(undefined);
+					window.matchMedia = tmpOriginal;
+				});
+
+				test('React view folds the resolver into UIOptions without clobbering a host-supplied one', () =>
+				{
+					let tmpPict = configureTestPict();
+					let tmpView = tmpPict.addView(
+						'TestExcalidrawFormFactor',
+						{ EmbedMode: 'react', ViewIdentifier: 'TestExcalidrawFormFactor', FormFactor: 'desktop' },
+						libPictSectionExcalidraw.ReactView
+					);
+					Expect(tmpView._buildUIOptions().getFormFactor()).to.equal('desktop');
+
+					let tmpHostHook = () => 'phone';
+					tmpView.options.UIOptions = { getFormFactor: tmpHostHook };
+					Expect(tmpView._buildUIOptions().getFormFactor).to.equal(tmpHostHook);
+
+					tmpView.options.UIOptions = {};
+					tmpView.options.FormFactor = 'auto';
+					Expect(tmpView._buildUIOptions().getFormFactor).to.equal(undefined);
+				});
+
+				test('Iframe init payload carries the form factor as a STRING (a function cannot be cloned)', () =>
+				{
+					let tmpPict = configureTestPict();
+					let tmpView = tmpPict.addView(
+						'TestExcalidrawFormFactorIframe',
+						{ EmbedMode: 'iframe', ViewIdentifier: 'TestExcalidrawFormFactorIframe', FormFactor: 'pointer' },
+						libPictSectionExcalidraw.IframeView
+					);
+
+					let tmpPosted = [];
+					tmpView._postToIframe = (pMessage) => { tmpPosted.push(pMessage); return true; };
+					tmpView._sendInitMessage();
+
+					let tmpInit = tmpPosted.filter((pM) => pM.type === 'pict-excalidraw:init')[0];
+					Expect(tmpInit).to.be.an('object');
+					Expect(tmpInit.payload.formFactor).to.equal('pointer');
+					// structuredClone is what postMessage actually does — a function here would throw.
+					Expect(() => JSON.stringify(tmpInit.payload.formFactor)).to.not.throw();
+				});
+
+				test('the wrap CSS floor is overridable so an embedder can size the control itself', () =>
+				{
+					let tmpConfiguration = require('../source/Pict-Section-Excalidraw-DefaultConfiguration.js');
+					Expect(tmpConfiguration.FormFactor).to.equal('auto');
+					Expect(tmpConfiguration.CSS).to.contain('var(--pict-excalidraw-min-height, 320px)');
+					Expect(tmpConfiguration.CSS).to.not.contain('min-height: 320px;');
+				});
+			}
+		);
 	}
 );

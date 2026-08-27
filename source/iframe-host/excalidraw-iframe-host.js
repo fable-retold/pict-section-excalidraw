@@ -62,6 +62,40 @@
 	};
 	var changeThrottleHandle = null;
 	var lastChangeSnapshot   = null;
+	var formFactorMode       = 'auto';
+
+	// Mirror of source/utils/Excalidraw-Form-Factor.js.  It is duplicated rather than required because
+	// this file runs inside the iframe with no module loader, and because the parent can only
+	// postMessage the MODE STRING (a function is not structured-cloneable).  Keep the two in step.
+	//
+	// Excalidraw sizes its UI from the CONTAINER's box, so a short embedded canvas reads as a phone and
+	// buries the shape properties in a popover.  Returning undefined defers to Excalidraw's own answer.
+	function resolveFormFactor()
+	{
+		var tmpMode = (typeof formFactorMode === 'string') ? formFactorMode.toLowerCase() : 'auto';
+		if (tmpMode === 'pointer')
+		{
+			var tmpCoarse = false;
+			try { tmpCoarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); }
+			catch (pErr) { tmpCoarse = false; }
+			return tmpCoarse ? undefined : 'desktop';
+		}
+		if (tmpMode === 'desktop' || tmpMode === 'tablet' || tmpMode === 'phone')
+		{
+			return tmpMode;
+		}
+		return undefined;
+	}
+
+	function buildUIOptions()
+	{
+		var tmpUIOptions = Object.assign({}, currentProps.UIOptions || {});
+		if (!tmpUIOptions.getFormFactor && (formFactorMode !== 'auto'))
+		{
+			tmpUIOptions.getFormFactor = resolveFormFactor;
+		}
+		return tmpUIOptions;
+	}
 
 	function applyThemeTokens(pTokens)
 	{
@@ -78,6 +112,8 @@
 	{
 		var tmpProps = Object.assign({}, currentProps,
 		{
+			// Rebuilt per render — the resolver has to be re-attached after any props merge.
+			UIOptions: buildUIOptions(),
 			// Public prop is onExcalidrawAPI, not excalidrawAPI (the latter
 			// is just the mountPayload shape inside Excalidraw's own code).
 			onExcalidrawAPI: function (pApi) { excalidrawAPI = pApi; },
@@ -238,6 +274,10 @@
 					if (tmpData.payload.assetBaseURL && !window.EXCALIDRAW_ASSET_PATH)
 					{
 						window.EXCALIDRAW_ASSET_PATH = tmpData.payload.assetBaseURL;
+					}
+					if (tmpData.payload.formFactor)
+					{
+						formFactorMode = tmpData.payload.formFactor;
 					}
 					currentProps = Object.assign(currentProps, tmpData.payload);
 				}

@@ -12,6 +12,13 @@
 			#status.hidden { display: none; }
 		</style>
 		<link rel="stylesheet" href="./excalidraw-wrapper.css" />
+		<style>
+			/* Excalidraw's quick-color swatch buttons carry their hex value as button text; in this
+			   embedded/iframe host that label renders as visible text overflowing the swatch. Hide the
+			   label (color:transparent keeps it available to assistive tech) — the swatch color itself is
+			   painted via background-color and is unaffected. Loaded after the wrapper CSS so it wins. */
+			.color-picker__button { color: transparent; }
+		</style>
 	</head>
 	<body>
 		<div id="status">Initializing Excalidraw…</div>

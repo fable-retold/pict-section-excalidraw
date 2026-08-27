@@ -29,6 +29,7 @@ Both modes share the same public API.
     TargetElementAddress: '#Excalidraw-Container',
     DrawingDataAddress: 'AppData.Drawing',    // optional AppData binding
     Theme: 'light',                           // 'light' | 'dark' | 'auto' (follow pict theme)
+    FormFactor: 'auto',                       // UI density — see below
     ViewModeEnabled: false,
     ZenModeEnabled: false,
     GridModeEnabled: false,
@@ -41,6 +42,36 @@ Both modes share the same public API.
     OnChange: (pView, pSceneData) => { /* throttled change notify */ }
 }
 ```
+
+### FormFactor — UI density in a small embed
+
+Excalidraw picks how dense its UI should be from the size of the **container**
+it is mounted in: roughly `width <= 599 || (height < 500 && width < 1000)` reads
+as a phone, and a phone gets the mobile styles panel, where the shape properties
+collapse behind a popover instead of the left-hand island.
+
+That is right for excalidraw.com, where the container *is* the viewport, and
+wrong for an embed, where the container is a box on a page — possibly a few
+hundred pixels tall on a large monitor driven by a mouse.
+
+| Value | Behaviour |
+|---|---|
+| `'auto'` *(default)* | Excalidraw decides. Stock behaviour. |
+| `'pointer'` | Desktop chrome when the primary pointer is fine (a mouse); Excalidraw's own answer on a touch screen, where the mobile UI is genuinely better. |
+| `'desktop'` / `'tablet'` / `'phone'` | Pin it. |
+
+Implemented over Excalidraw's own `UIOptions.getFormFactor(width, height)` hook.
+A host that supplies its own `UIOptions.getFormFactor` keeps it — this never
+overwrites one. In `iframe` mode the *mode string* crosses `postMessage` (a
+function is not structured-cloneable) and the host page rebuilds the resolver
+inside the frame.
+
+### Sizing
+
+`.pict-excalidraw-wrap` floors itself at
+`var(--pict-excalidraw-min-height, 320px)`. Set that variable on (or above) the
+wrap to let a host that sizes the control itself — a form field with a resize
+grip, say — go below the default floor.
 
 ### Methods
 

@@ -19,6 +19,7 @@
 
 const libPictViewClass = require('pict-view');
 const _DefaultConfiguration = require('../Pict-Section-Excalidraw-DefaultConfiguration.js');
+const { buildFormFactorResolver } = require('../utils/Excalidraw-Form-Factor.js');
 
 class PictViewExcalidrawReact extends libPictViewClass
 {
@@ -267,6 +268,24 @@ class PictViewExcalidrawReact extends libPictViewClass
 		this._statusElement.style.display = 'none';
 	}
 
+	/**
+	 * UIOptions as handed to <Excalidraw>, with our FormFactor override folded in when one is
+	 * configured.  Excalidraw deliberately excludes getFormFactor from its props memo, so passing a
+	 * fresh function per render is safe.
+	 *
+	 * @return {Object} The UIOptions object.
+	 */
+	_buildUIOptions()
+	{
+		let tmpUIOptions = Object.assign({}, this.options.UIOptions || {});
+		if (!tmpUIOptions.getFormFactor)
+		{
+			let tmpResolver = buildFormFactorResolver(this.options.FormFactor);
+			if (tmpResolver) tmpUIOptions.getFormFactor = tmpResolver;
+		}
+		return tmpUIOptions;
+	}
+
 	_mountReact(pVendor)
 	{
 		let tmpReact     = pVendor.React;
@@ -286,7 +305,7 @@ class PictViewExcalidrawReact extends libPictViewClass
 			viewModeEnabled: !!this.options.ViewModeEnabled,
 			zenModeEnabled:  !!this.options.ZenModeEnabled,
 			gridModeEnabled: !!this.options.GridModeEnabled,
-			UIOptions:       this.options.UIOptions || {},
+			UIOptions:       this._buildUIOptions(),
 			// NOTE: the public prop in @excalidraw/excalidraw is
 			// `onExcalidrawAPI` (despite some older docs / community
 			// wrappers referring to `excalidrawAPI`).  See
