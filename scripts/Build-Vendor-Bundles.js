@@ -139,15 +139,25 @@ async function main()
 	// mounts every dialog/modal with createPortal), so window.ReactDOM must be the union of both entries —
 	// react-dom/client alone omits createPortal, which surfaces as "createPortal is not a function" the
 	// first time any dialog opens, tearing the editor down. Merge them (client wins for createRoot).
+	// The automatic JSX runtime (react/jsx-runtime) is a SEPARATE entry point from react — `jsx` and
+	// `jsxs` are not on the React namespace. Excalidraw is compiled against the automatic runtime, so
+	// the wrapper needs a real one; without it the shim falls back to createElement, whose third
+	// argument is CHILDREN where jsx's is KEY, and every keyed element renders its key in place of its
+	// children (a keyed <label> with an icon and a radio inside collapses to a bare text label — the
+	// property buttons stop being clickable). Expose it as its own global rather than bolting jsx onto
+	// window.React, which has no such public API.
 	let tmpReactEntrySource =
 		`import * as React from 'react';\n` +
 		`import * as ReactDOM from 'react-dom';\n` +
 		`import * as ReactDOMClient from 'react-dom/client';\n` +
+		`import * as ReactJSXRuntime from 'react/jsx-runtime';\n` +
 		`const _React    = React.default    || React;\n` +
 		`const _ReactDOM = Object.assign({}, ReactDOM.default || ReactDOM, ReactDOMClient.default || ReactDOMClient);\n` +
+		`const _ReactJSX = ReactJSXRuntime.default || ReactJSXRuntime;\n` +
 		`if (typeof window !== 'undefined') {\n` +
-		`\twindow.React    = window.React    || _React;\n` +
-		`\twindow.ReactDOM = window.ReactDOM || _ReactDOM;\n` +
+		`\twindow.React           = window.React           || _React;\n` +
+		`\twindow.ReactDOM        = window.ReactDOM        || _ReactDOM;\n` +
+		`\twindow.ReactJSXRuntime = window.ReactJSXRuntime || _ReactJSX;\n` +
 		`}\n`;
 
 	let tmpReactEntryPath = libPath.join(VENDOR_BUILT, '__react_entry.js');
@@ -275,9 +285,22 @@ async function main()
 						`export const Children       = R.Children;\n` +
 						`export const isValidElement = R.isValidElement;\n` +
 						`export const version        = R.version;\n` +
-						`export const jsx            = (R.jsx || R.createElement);\n` +
-						`export const jsxs           = (R.jsxs || R.createElement);\n` +
-						`export const jsxDEV         = (R.jsxDEV || R.jsx || R.createElement);\n`;
+						// jsx(type, props, key) is NOT createElement(type, props, ...children): handing
+						// createElement a third argument makes it overwrite props.children with the KEY.
+						// Prefer a real runtime; otherwise adapt createElement by leaving children in
+						// props (createElement only overwrites them when extra args are passed) and
+						// moving the key into the config where createElement expects it.
+						`const RJSX = (typeof window !== "undefined" && window.ReactJSXRuntime) || {};\n` +
+						`const _adaptJsx = (pCreateElement) => function (pType, pProps, pKey)\n` +
+						`{\n` +
+						`\tif (typeof pCreateElement !== "function") { return null; }\n` +
+						`\tlet tmpProps = pProps || {};\n` +
+						`\tif (pKey !== undefined && pKey !== null) { tmpProps = Object.assign({}, tmpProps, { key: pKey }); }\n` +
+						`\treturn pCreateElement(pType, tmpProps);\n` +
+						`};\n` +
+						`export const jsx            = (RJSX.jsx    || R.jsx    || _adaptJsx(R.createElement));\n` +
+						`export const jsxs           = (RJSX.jsxs   || R.jsxs   || _adaptJsx(R.createElement));\n` +
+						`export const jsxDEV         = (RJSX.jsxDEV || R.jsxDEV || RJSX.jsx || R.jsx || _adaptJsx(R.createElement));\n`;
 				}
 				else if (tmpPath === 'react-dom' || tmpPath === 'react-dom/client')
 				{
